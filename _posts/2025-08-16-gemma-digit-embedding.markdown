@@ -49,6 +49,11 @@ How about plotting the words `zero`, `one`, ..., `nine` as well? I did that and 
 
 Notice how the word embeddings are (somewhat) parallel to the digit embeddings and follow the same structure as the digit embeddings.
 
+The complete source code for generating these visualizations is available:
+
+- [Digit embeddings visualization](https://github.com/neuralblog/neuralblog.github.io/blob/main/py/gemma-3-digit-embedding/get_digit_embeddings.py)
+- [Digit and word embeddings comparison](https://github.com/neuralblog/neuralblog.github.io/blob/main/py/gemma-3-digit-embedding/get_digit_and_word_embeddings.py)
+
 <script>
 function toggleFullscreen(elementId) {
   const element = document.getElementById(elementId);

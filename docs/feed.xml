@@ -1,0 +1,119 @@
+<?xml version="1.0" encoding="utf-8"?><feed xmlns="http://www.w3.org/2005/Atom" ><generator uri="https://jekyllrb.com/" version="4.4.1">Jekyll</generator><link href="/feed.xml" rel="self" type="application/atom+xml" /><link href="/" rel="alternate" type="text/html" /><updated>2025-08-16T15:47:55+08:00</updated><id>/feed.xml</id><title type="html">Neural Blogs</title><subtitle>My notes on neural networks</subtitle><entry><title type="html">Gemma 3 270M’s Digit Embeddings</title><link href="/interpretability/2025/08/16/gemma-digit-embedding.html" rel="alternate" type="text/html" title="Gemma 3 270M’s Digit Embeddings" /><published>2025-08-16T13:55:31+08:00</published><updated>2025-08-16T13:55:31+08:00</updated><id>/interpretability/2025/08/16/gemma-digit-embedding</id><content type="html" xml:base="/interpretability/2025/08/16/gemma-digit-embedding.html"><![CDATA[<p>Google released a tiny Gemma model recently, <a href="https://developers.googleblog.com/en/introducing-gemma-3-270m/">Gemma 3 270M</a>. What’s interesting about the size of this model is that out of 270 million parameters, 170 million of them are embedding vectors, and only 100 million parameters are for transformer blocks. It is uncontroversial to say… a lot of information is encoded in these embedding vectors.</p>
+
+<p>So, naturally, I want to take a quick look at these vectors from an interpretability perspective. The easy target is digit embeddings. Unlike Llama models, Gemma models simply split numbers into digits. For example, the number <code class="language-plaintext highlighter-rouge">123</code> is split into three tokens: <code class="language-plaintext highlighter-rouge">1</code>, <code class="language-plaintext highlighter-rouge">2</code>, and <code class="language-plaintext highlighter-rouge">3</code>.</p>
+
+<p>This makes things simple for us: we have 10 tokens to represent the 10 digits.</p>
+
+<p>Here is how we get these 10 token embeddings:</p>
+
+<figure class="highlight"><pre><code class="language-python" data-lang="python"><span class="c1"># Load model and tokenizer
+</span><span class="n">tokenizer</span> <span class="o">=</span> <span class="n">AutoTokenizer</span><span class="p">.</span><span class="nf">from_pretrained</span><span class="p">(</span><span class="sh">"</span><span class="s">google/gemma-3-270m</span><span class="sh">"</span><span class="p">)</span>
+<span class="n">model</span> <span class="o">=</span> <span class="n">AutoModelForCausalLM</span><span class="p">.</span><span class="nf">from_pretrained</span><span class="p">(</span><span class="sh">"</span><span class="s">google/gemma-3-270m</span><span class="sh">"</span><span class="p">)</span>
+
+<span class="c1"># Extract embeddings for digits 0-9
+</span><span class="n">digits</span> <span class="o">=</span> <span class="sh">"</span><span class="s">0123456789</span><span class="sh">"</span>
+<span class="n">digit_tokens</span> <span class="o">=</span> <span class="n">tokenizer</span><span class="p">.</span><span class="nf">encode</span><span class="p">(</span><span class="n">digits</span><span class="p">,</span> <span class="n">add_special_tokens</span><span class="o">=</span><span class="bp">False</span><span class="p">)</span>
+<span class="n">embeds</span> <span class="o">=</span> <span class="n">model</span><span class="p">.</span><span class="n">model</span><span class="p">.</span><span class="n">embed_tokens</span><span class="p">.</span><span class="n">weight</span>
+<span class="n">digit_embeddings</span> <span class="o">=</span> <span class="n">embeds</span><span class="p">[</span><span class="n">digit_tokens</span><span class="p">].</span><span class="nf">detach</span><span class="p">().</span><span class="nf">numpy</span><span class="p">()</span></code></pre></figure>
+
+<p>Then, I do a simple PCA projection of these embeddings to a 3D space. Here are the results:</p>
+
+<div id="viz1-container" style="position: relative; border: 1px solid #ddd; border-radius: 4px;">
+<button onclick="toggleFullscreen('viz1-container')" style="position: absolute; left: 8px; top: 8px; z-index: 10; background: rgba(255,255,255,0.8); border: 1px solid #ccc; border-radius: 3px; padding: 4px 6px; cursor: pointer; font-size: 12px;" title="Toggle Fullscreen">⛶</button>
+<iframe src="/assets/visualizations/digit_embed_3d.html" width="100%" height="400px" frameborder="0" scrolling="no"></iframe>
+</div>
+
+<p><em>Click the button in the top left corner to see the plot in fullscreen.</em></p>
+
+<p>Playing with the visualization a bit, we can see that the number zero is separate from the others (unsurprisingly), and the other numbers seem to form a circle in the natural order of the digits.</p>
+
+<p>How about plotting the words <code class="language-plaintext highlighter-rouge">zero</code>, <code class="language-plaintext highlighter-rouge">one</code>, …, <code class="language-plaintext highlighter-rouge">nine</code> as well? I did that and here are the results:</p>
+
+<div id="viz2-container" style="position: relative; border: 1px solid #ddd; border-radius: 4px;">
+<button onclick="toggleFullscreen('viz2-container')" style="position: absolute; left: 8px; top: 8px; z-index: 10; background: rgba(255,255,255,0.8); border: 1px solid #ccc; border-radius: 3px; padding: 4px 6px; cursor: pointer; font-size: 12px;" title="Toggle Fullscreen">⛶</button>
+<iframe src="/assets/visualizations/digit_and_word_embed_3d.html" width="100%" height="400px" frameborder="0" scrolling="no"></iframe>
+</div>
+
+<p><em>Click the button in the top left corner to see the plot in fullscreen.</em></p>
+
+<p>Notice how the word embeddings are (somewhat) parallel to the digit embeddings and follow the same structure as the digit embeddings.</p>
+
+<p>The complete source code for generating these visualizations is available:</p>
+
+<ul>
+  <li><a href="https://github.com/neuralblog/neuralblog.github.io/blob/main/py/gemma-3-digit-embedding/get_digit_embeddings.py">Digit embeddings visualization</a></li>
+  <li><a href="https://github.com/neuralblog/neuralblog.github.io/blob/main/py/gemma-3-digit-embedding/get_digit_and_word_embeddings.py">Digit and word embeddings comparison</a></li>
+</ul>
+
+<script>
+function toggleFullscreen(elementId) {
+  const element = document.getElementById(elementId);
+  
+  if (!document.fullscreenElement) {
+    // Enter fullscreen
+    if (element.requestFullscreen) {
+      element.requestFullscreen();
+    } else if (element.webkitRequestFullscreen) {
+      element.webkitRequestFullscreen();
+    } else if (element.msRequestFullscreen) {
+      element.msRequestFullscreen();
+    }
+    // Style adjustments for fullscreen
+    element.style.position = 'fixed';
+    element.style.top = '0';
+    element.style.left = '0';
+    element.style.width = '100vw';
+    element.style.height = '100vh';
+    element.style.zIndex = '9999';
+    element.style.backgroundColor = 'white';
+    const iframe = element.querySelector('iframe');
+    if (iframe) {
+      iframe.style.height = '100%';
+    }
+  } else {
+    // Exit fullscreen
+    if (document.exitFullscreen) {
+      document.exitFullscreen();
+    } else if (document.webkitExitFullscreen) {
+      document.webkitExitFullscreen();
+    } else if (document.msExitFullscreen) {
+      document.msExitFullscreen();
+    }
+    // Reset styles
+    element.style.position = 'relative';
+    element.style.top = 'auto';
+    element.style.left = 'auto';
+    element.style.width = 'auto';
+    element.style.height = 'auto';
+    element.style.zIndex = 'auto';
+    element.style.backgroundColor = 'transparent';
+    const iframe = element.querySelector('iframe');
+    if (iframe) {
+      iframe.style.height = '400px';
+    }
+  }
+}
+
+// Handle ESC key and fullscreen change events
+document.addEventListener('fullscreenchange', function() {
+  if (!document.fullscreenElement) {
+    // Reset all containers when exiting fullscreen
+    ['viz1-container', 'viz2-container'].forEach(id => {
+      const element = document.getElementById(id);
+      if (element) {
+        element.style.position = 'relative';
+        element.style.top = 'auto';
+        element.style.left = 'auto';
+        element.style.width = 'auto';
+        element.style.height = 'auto';
+        element.style.zIndex = 'auto';
+        element.style.backgroundColor = 'transparent';
+        const iframe = element.querySelector('iframe');
+        if (iframe) {
+          iframe.style.height = '400px';
+        }
+      }
+    });
+  }
+});
+</script>]]></content><author><name></name></author><category term="interpretability" /><summary type="html"><![CDATA[Google released a tiny Gemma model recently, Gemma 3 270M. What’s interesting about the size of this model is that out of 270 million parameters, 170 million of them are embedding vectors, and only 100 million parameters are for transformer blocks. It is uncontroversial to say… a lot of information is encoded in these embedding vectors.]]></summary></entry></feed>
