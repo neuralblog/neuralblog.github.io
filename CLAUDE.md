@@ -32,3 +32,4 @@ Each post requires front matter with:
 - `categories: space separated categories`
 
 Pages use front matter with layout (`page` or `home`) and optionally `permalink` for custom URLs.
+- always NOT use `—` in my blogs.
