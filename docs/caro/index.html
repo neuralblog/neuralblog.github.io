@@ -260,7 +260,7 @@
             };
 
         };
-        const modelUrl = '/tf_saved_agent_js/model.json';
+        const modelUrl = './tf_saved_agent_js/model.json';
         const init_fn = async function () {
             await tf.setBackend('wasm');
             const model = await tf.loadGraphModel(modelUrl);
