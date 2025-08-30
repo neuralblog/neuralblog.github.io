@@ -1,0 +1,280 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+    <title>Caro game</title>
+    <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs/dist/tf.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs-backend-wasm/dist/tf-backend-wasm.js"></script>
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+</head>
+
+<body>
+    <p style="user-select: none; font-family: sans-serif;">
+        Try to connect 5 stones on a line.
+    <ul style="user-select: none; font-family: sans-serif;">
+        <li>Rule 1: First move has to be right in the middle.</li>
+        <li>Rule 2: Third move has to be outside of the 6x6 box.</li>
+    </ul>
+
+    </p>
+    <p style="user-select: none;">
+        <button type="button" style="width:80px; height:25px;" id="ai-first">AI FIRST</button>
+        <button type="button" style="width:80px; height:25px;" id="reset_btn">RESET</button>
+        <code id="msg">Loading model weights...</code>
+    </p>
+    <canvas id="game-board" width="600px" height="600px"></canvas>
+    <script>
+        function BoardGame(agent, num_rows, num_cols) {
+            this.agent = agent;
+            this.audio = new Audio('stone.ogg');
+            this.num_cols = num_cols;
+            this.num_rows = num_rows;
+            var this_ = this;
+            this.canvas_ctx = document.getElementById("game-board").getContext("2d");
+            this.board_scale = 40;
+            this.box_size = 3;
+            document.getElementById("game-board").height = this.board_scale * (num_rows + 1);
+            document.getElementById("game-board").width = this.board_scale * (num_cols + 1);
+            this.canvas_ctx.scale(this.board_scale, this.board_scale);
+            this.canvas_ctx.translate(1, 1);
+            this.reset = function () {
+                this.board = new Array(num_rows * num_cols);
+                for (let i = 0; i < this.board.length; i++) this.board[i] = 0;
+                this.mouse_x = -1;
+                this.mouse_y = -1;
+                this.who_play = 1;
+                this.ai_player = -1;
+                this.game_ended = false;
+                this.count = 0;
+                this.newest_stone = -1;
+                document.getElementById('msg').innerText = '';
+            };
+            this.reset();
+            this.get = function (row, col) {
+                return this.board[this.num_cols * row + col];
+            };
+            this.is_terminated = function () {
+                // check if the game is terminated
+                if (this.board.some((x) => x == 0) == false) return true;
+                for (let i = 0; i < this.num_rows; i++) {
+                    for (let j = 0; j < this.num_cols; j++) {
+                        // check winner at cell i, j
+                        var p = this.get(i, j);
+                        if (p == 0) continue;
+                        for (let [dx, dy] of [[1, 0], [0, 1], [1, 1], [-1, 1]]) {
+                            var count = 0;
+                            for (let k = 0; k < 5; k++) {
+                                const u = i + dx * k;
+                                const v = j + dy * k;
+                                if (u < 0 || u >= this.num_rows) break;
+                                if (v < 0 || v >= this.num_cols) break;
+                                if (this.get(u, v) != p) break;
+                                count = count + 1;
+                            }
+                            if (count >= 5) return true;
+                        }
+                    }
+                }
+                return false;
+            };
+            this.submit_board = async function () {
+                await new Promise(r => setTimeout(r, 1000));
+                if (this_.is_terminated()) return {"terminated": true, "action": -1};
+                const obs = tf.tensor(this_.board, [this_.num_rows, this_.num_cols], 'float32');
+                const normalized_obs = tf.mul(obs, this_.ai_player);
+                const [action_logits, value] = this_.agent.execute(normalized_obs, ["output_0", "output_1"]);
+                const action = await tf.argMax(action_logits).array();
+                return {
+                    "terminated": false,
+                    "action": action,
+                };
+            };
+            this.end_game = function () {
+                this.game_ended = true;
+            };
+            this.is_recent_invalid_action = function (action) {
+                const mid_action = (this.num_cols * this.num_cols - 1) / 2;
+                if (this.count == 1 && action != mid_action) return true;
+                if (this.count == 3) {
+                    const mid_col = (this.num_cols - 1) / 2;
+                    const mid_row = (this.num_rows - 1) / 2;
+                    let x = action % this.num_cols;
+                    let y = Math.floor(action / this.num_cols);
+                    if (Math.abs(y - mid_row) <= this.box_size && Math.abs(x - mid_col) <= this.box_size)
+                        return true;
+                }
+                return false;
+
+            }
+            this.ai_play = function () {
+                document.getElementById('msg').innerText = 'waiting...';
+                this_.submit_board().then(
+                    function (info) {
+                        document.body.style.cursor = 'default';
+                        document.getElementById('msg').innerText = '';
+                        let a = info["action"];
+                        if (a != -1) {
+                            this_.newest_stone = a;
+                            this_.board[a] = this_.who_play;
+                            this_.audio.play();
+                            this_.who_play = -this_.who_play;
+                            this_.render();
+                            this_.count = this_.count + 1;
+                        }
+                        if (this_.is_recent_invalid_action(a)) {
+                            document.getElementById('msg').innerText = 'you won!';
+                            this_.end_game();
+                        }
+                        if (this_.is_terminated() == true) {
+                            document.getElementById('msg').innerText = 'you lost :(';
+                            this_.end_game();
+                        }
+                    }
+                ).catch(function (e) {});
+            };
+            document.getElementById("ai-first").onclick = function () {
+                this_.reset();
+                this_.ai_player = 1;
+                this_.ai_play(-1);
+            };
+            document.getElementById("reset_btn").onclick = function () {
+                this_.reset();
+                this_.render();
+            };
+
+            document.getElementById("game-board").addEventListener('click', function (e) {
+                var rect = this.getBoundingClientRect();
+                var x = e.clientX - rect.left;
+                var y = e.clientY - rect.top;
+                var loc_x = Math.floor(x / this_.board_scale - 0.5);
+                var loc_y = Math.floor(y / this_.board_scale - 0.5);
+                this_.mouse_x = loc_x;
+                this_.mouse_y = loc_y;
+
+                if (
+                    this_.mouse_x >= 0 &&
+                    this_.mouse_y >= 0 &&
+                    this_.mouse_x < this_.num_cols &&
+                    this_.mouse_y < this_.num_rows &&
+                    this_.game_ended == false
+                ) {
+                    if (this_.who_play == this_.ai_player) return false;
+                    let i = this_.mouse_y * this_.num_cols + this_.mouse_x;
+                    if (this_.board[i] != 0) return false;
+                    this_.board[i] = this_.who_play;
+                    this_.newest_stone = i;
+                    this_.count = this_.count + 1;
+                    this_.audio.play();
+                    this_.render();
+                    if (this_.is_recent_invalid_action(i)) {
+                        document.getElementById('msg').innerText = 'you lost :(';
+                        this_.end_game();
+                    } else if (this_.is_terminated() == true) {
+                        document.getElementById('msg').innerText = 'you win!';
+                        this_.end_game();
+                    } else {
+                        this_.who_play = -this_.who_play;
+                        this_.ai_play(i);
+                    }
+
+                }
+            }, false);
+            this.draw_stone = function (x, y, color, new_stone) {
+                let ctx = this.canvas_ctx;
+
+                ctx.beginPath();
+                ctx.arc(x, y, 0.50, 0, 2 * Math.PI, false);
+                ctx.fillStyle = "#b8891c";
+                ctx.fill();
+
+                ctx.beginPath();
+                ctx.arc(x, y, 0.44, 0, 2 * Math.PI, false);
+                ctx.fillStyle = color;
+                ctx.fill();
+                ctx.lineWidth = 0.02;
+                ctx.strokeStyle = "black";
+                ctx.stroke();
+
+                if (new_stone) {
+                    ctx.beginPath();
+                    ctx.arc(x, y, 0.1, 0, 2 * Math.PI, false);
+                    ctx.fillStyle = "red";
+                    ctx.fill();
+                }
+            };
+            this.render = function () {
+                let ctx = this.canvas_ctx;
+                ctx.fillStyle = "#b8891c";
+                ctx.fillRect(-1, -1, num_cols + 1, num_rows + 1);
+                ctx.fillStyle = "#b8891c";
+                ctx.fillRect(0, 0, num_cols - 1, num_rows - 1);
+                ctx.lineWidth = 0.1 / 5;
+                for (let i = 0; i < this.num_cols; i++) {
+                    ctx.beginPath();
+                    ctx.moveTo(i, 0);
+                    ctx.lineTo(i, this.num_rows - 1);
+                    ctx.strokeStyle = "black";
+                    ctx.stroke();
+                }
+                for (let i = 0; i < this.num_rows; i++) {
+                    ctx.beginPath();
+                    ctx.moveTo(0, i);
+                    ctx.lineTo(this.num_cols - 1, i);
+                    ctx.strokeStyle = "black";
+                    ctx.stroke();
+                }
+
+                if (this.count < 3) {
+                    // center point
+                    ctx.beginPath();
+                    ctx.arc((this.num_rows - 1) / 2, (this.num_cols - 1) / 2, 0.09, 0, 2 * Math.PI, false);
+                    ctx.fillStyle = "black";
+                    ctx.fill();
+
+                    // third move box
+                    ctx.lineWidth = 0.1 / 2;
+                    const mid_col = (this.num_cols - 1) / 2;
+                    const mid_row = (this.num_rows - 1) / 2;
+                    ctx.beginPath();
+                    ctx.strokeStyle = "#black";
+                    ctx.rect(mid_col - this.box_size, mid_row - this.box_size, 2 * this.box_size, 2 * this.box_size);
+                    ctx.stroke();
+                }
+
+                for (let i = 0; i < this.board.length; i++) {
+                    let x = i % this.num_cols;
+                    let y = Math.floor(i / this.num_cols);
+                    if (this.board[i] == 0) continue;
+                    let color = (this.board[i] == 1) ? "#3a352d" : "#f0ece4";
+                    this.draw_stone(x, y, color, i == this.newest_stone);
+                }
+            };
+            document.getElementById("game-board").onmousemove = function (e) {
+                var rect = this.getBoundingClientRect();
+                var x = e.clientX - rect.left;
+                var y = e.clientY - rect.top;
+                var loc_x = Math.floor(x / this_.board_scale - 0.5);
+                var loc_y = Math.floor(y / this_.board_scale - 0.5);
+                this_.mouse_x = loc_x;
+                this_.mouse_y = loc_y;
+            };
+
+        };
+        const modelUrl = '/tf_saved_agent_js/model.json';
+        const init_fn = async function () {
+            await tf.setBackend('wasm');
+            const model = await tf.loadGraphModel(modelUrl);
+            return model;
+        };
+        document.addEventListener("DOMContentLoaded", function (event) {
+            init_fn().then(function (agent) {
+                document.getElementById('msg').innerText = '';
+                game = new BoardGame(agent, 15, 15);
+                game.render();
+            });
+        });
+
+    </script>
+</body>
+
+</html>
